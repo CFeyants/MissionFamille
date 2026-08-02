@@ -3,38 +3,43 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 /* ============================================================
-   MISSIONS EN FAMILLE — v1 personnalisée Romane & Théo
-   Stockage partagé : API /api/state (Upstash Redis)
+   MISSIES MET HET GEZIN — v2 (Nederlands) — Romane & Théo
+   Gedeelde opslag : API /api/state (Upstash Redis)
    ============================================================ */
 
 const PARENT_PIN = process.env.NEXT_PUBLIC_PARENT_PIN || "180586";
 const AVATARS = ["🦊", "🐯", "🐰", "🐼", "🦁", "🐨", "🐸", "🦄", "🐙", "🐶"];
 
+// Versie van de inhoud (missies/beloningen/minpunten). Bij een verhoging
+// worden de standaardlijsten van Romane & Théo opnieuw opgebouwd terwijl de
+// verdiende punten behouden blijven.
+const CONTENT_VERSION = 2;
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-// Date locale au format YYYY-MM-DD (fuseau de l'appareil)
+// Lokale datum in formaat YYYY-MM-DD (tijdzone van het toestel)
 const getToday = () => {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-// Lundi (1) à vendredi (5) = jour d'école
+// Maandag (1) tot vrijdag (5) = schooldag
 const isSchoolDay = () => {
   const day = new Date().getDay();
   return day >= 1 && day <= 5;
 };
 
-const frDate = (iso) => {
+const nlDate = (iso) => {
   try {
-    const [y, m, d] = iso.split("-");
+    const [, m, d] = iso.split("-");
     return `${d}/${m}`;
   } catch {
     return iso;
   }
 };
 
-/* ---------- Accès au stockage partagé (API) ---------- */
+/* ---------- Toegang tot de gedeelde opslag (API) ---------- */
 async function readState() {
   const res = await fetch("/api/state", { cache: "no-store" });
   if (!res.ok) throw new Error("read failed");
@@ -51,9 +56,14 @@ async function writeState(data) {
   if (!res.ok) throw new Error("write failed");
 }
 
-/* ---------- Données par défaut : Romane & Théo ---------- */
+/* ---------- Standaardgegevens : Romane & Théo (Nederlands) ---------- */
+/* Vlaggen per missie :
+     schoolOnly  → alleen zichtbaar op schooldagen (ma–vr)
+     homeOnly    → alleen zichtbaar buiten school (weekend/vakantie)
+     repeatable  → mag meerdere keren per dag afgevinkt worden (teller) */
 const defaultData = () => ({
   lastReset: getToday(),
+  contentVersion: CONTENT_VERSION,
   children: [
     {
       id: "romane",
@@ -63,19 +73,28 @@ const defaultData = () => ({
       totalPoints: 0,
       completedToday: {},
       missions: [
-        { id: uid(), emoji: "🌙", label: "Aller me coucher sans discuter", points: 10, schoolOnly: false },
-        { id: uid(), emoji: "🧸", label: "Ranger ma chambre", points: 10, schoolOnly: false },
-        { id: uid(), emoji: "🍽️", label: "Participer à une tâche ménagère", points: 5, schoolOnly: false },
-        { id: uid(), emoji: "🥪", label: "Sortir ma boîte à tartines", points: 5, schoolOnly: true },
+        { id: uid(), emoji: "🏃", label: "Me meteen klaarmaken om te vertrekken (schoenen en jas aan)", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🙂", label: "Niet mopperen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🧸", label: "Mijn kamer opruimen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🧻", label: "Handdoeken aan het handdoekenrek hangen", points: 5, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🌙", label: "Zonder mopperen naar bed gaan", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🧹", label: "Meehelpen met een huishoudelijke taak", points: 5, schoolOnly: false, homeOnly: false, repeatable: true },
+        { id: uid(), emoji: "🧩", label: "Speelgoed opruimen na het spelen", points: 10, schoolOnly: false, homeOnly: false, repeatable: true },
+        { id: uid(), emoji: "🥪", label: "Boterhammen klaarmaken voor school of stage", points: 20, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🥐", label: "Zelf mijn boterhammen smeren (ontbijt en lunch)", points: 10, schoolOnly: false, homeOnly: true, repeatable: false },
       ],
       rewards: [
-        { id: uid(), emoji: "📺", label: "+20 min de télé", cost: 120 },
-        { id: uid(), emoji: "📖", label: "+10 min d'histoire au lit", cost: 60 },
-        { id: uid(), emoji: "🎬", label: "Choisir le film du soir", cost: 80 },
+        { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 60 },
+        { id: uid(), emoji: "📺", label: "20 min extra tv", cost: 120 },
+        { id: uid(), emoji: "📖", label: "10 min extra voorlezen in bed", cost: 60 },
+        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 80 },
       ],
       penalties: [
-        { id: uid(), emoji: "🛏️", label: "Discussions au coucher", points: 5 },
-        { id: uid(), emoji: "🌪️", label: "Chambre laissée en désordre", points: 5 },
+        { id: uid(), emoji: "😤", label: "Gemopperd", points: 5 },
+        { id: uid(), emoji: "🛏️", label: "Discussie bij het slapengaan", points: 5 },
+        { id: uid(), emoji: "🌪️", label: "Kamer niet opgeruimd", points: 5 },
+        { id: uid(), emoji: "🧩", label: "Speelgoed niet opgeruimd", points: 5 },
       ],
       penaltiesToday: [],
       history: [],
@@ -88,21 +107,29 @@ const defaultData = () => ({
       totalPoints: 0,
       completedToday: {},
       missions: [
-        { id: uid(), emoji: "💛", label: "Être gentil avec Romane", points: 10, schoolOnly: false },
-        { id: uid(), emoji: "👕", label: "Ranger mes vêtements", points: 10, schoolOnly: false },
-        { id: uid(), emoji: "✏️", label: "Faire mes devoirs sans râler", points: 10, schoolOnly: true },
-        { id: uid(), emoji: "🍽️", label: "Participer à une tâche ménagère", points: 5, schoolOnly: false },
-        { id: uid(), emoji: "🥪", label: "Sortir ma boîte à tartines", points: 5, schoolOnly: true },
+        { id: uid(), emoji: "🏃", label: "Me meteen klaarmaken om te vertrekken (schoenen en jas aan)", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "💛", label: "Lief zijn voor Romane", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "✏️", label: "Niet mopperen om mijn huiswerk te maken", points: 10, schoolOnly: true, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "👕", label: "Mijn kleren opruimen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🧻", label: "Handdoeken aan het handdoekenrek hangen", points: 5, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🌙", label: "Zonder mopperen naar bed gaan", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🧹", label: "Meehelpen met een huishoudelijke taak", points: 5, schoolOnly: false, homeOnly: false, repeatable: true },
+        { id: uid(), emoji: "🧩", label: "Speelgoed opruimen na het spelen", points: 10, schoolOnly: false, homeOnly: false, repeatable: true },
+        { id: uid(), emoji: "🥪", label: "Boterhammen klaarmaken voor school of stage", points: 20, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🥐", label: "Zelf mijn boterhammen smeren (ontbijt en lunch)", points: 10, schoolOnly: false, homeOnly: true, repeatable: false },
       ],
       rewards: [
-        { id: uid(), emoji: "🎮", label: "+15 min de jeu", cost: 150 },
-        { id: uid(), emoji: "🌙", label: "Me coucher 15 min après Romane", cost: 100 },
-        { id: uid(), emoji: "🎬", label: "Choisir le film du soir", cost: 80 },
+        { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 60 },
+        { id: uid(), emoji: "🎮", label: "15 min extra spelen", cost: 150 },
+        { id: uid(), emoji: "🌙", label: "15 min later naar bed dan Romane", cost: 100 },
+        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 80 },
       ],
       penalties: [
-        { id: uid(), emoji: "🙅", label: "Pas gentil avec Romane", points: 10 },
-        { id: uid(), emoji: "😤", label: "A râlé pour les devoirs", points: 5 },
-        { id: uid(), emoji: "👕", label: "Vêtements étalés", points: 5 },
+        { id: uid(), emoji: "🙅", label: "Niet lief voor Romane", points: 10 },
+        { id: uid(), emoji: "😤", label: "Gemopperd om het huiswerk", points: 5 },
+        { id: uid(), emoji: "👕", label: "Kleren rondgeslingerd", points: 5 },
+        { id: uid(), emoji: "🧩", label: "Speelgoed niet opgeruimd", points: 5 },
       ],
       penaltiesToday: [],
       history: [],
@@ -110,7 +137,7 @@ const defaultData = () => ({
   ],
 });
 
-/* ---------- Remise à zéro quotidienne (les points restent) ---------- */
+/* ---------- Dagelijkse reset (de punten blijven behouden) ---------- */
 const applyDailyReset = (data) => {
   const today = getToday();
   if (data.lastReset === today) return { data, changed: false };
@@ -124,17 +151,50 @@ const applyDailyReset = (data) => {
   };
 };
 
-/* Migration : garantit les champs pénalités sur des données déjà enregistrées */
+/* Migratie : zorgt dat de minpunt-velden bestaan op reeds opgeslagen gegevens */
 const normalizeData = (data) => {
   data.children.forEach((c) => {
     if (!Array.isArray(c.penalties)) c.penalties = [];
     if (!Array.isArray(c.penaltiesToday)) c.penaltiesToday = [];
+    if (!c.completedToday || typeof c.completedToday !== "object") c.completedToday = {};
+    c.missions.forEach((m) => {
+      if (typeof m.schoolOnly !== "boolean") m.schoolOnly = false;
+      if (typeof m.homeOnly !== "boolean") m.homeOnly = false;
+      if (typeof m.repeatable !== "boolean") m.repeatable = false;
+    });
   });
   return data;
 };
 
+/* Inhoudsmigratie : bij een nieuwe CONTENT_VERSION worden de missies,
+   beloningen en minpunten van Romane & Théo opnieuw opgebouwd uit de
+   Nederlandse standaardlijsten. Punten, totaal en geschiedenis blijven. */
+const applyContentMigration = (data) => {
+  if (data.contentVersion === CONTENT_VERSION) return { data, changed: false };
+  const defaults = defaultData();
+  const byId = {};
+  defaults.children.forEach((c) => {
+    byId[c.id] = c;
+  });
+  data.children = data.children.map((c) => {
+    const def = byId[c.id];
+    if (!def) return c; // zelf toegevoegd kind : ongewijzigd laten
+    return {
+      ...c,
+      avatar: c.avatar || def.avatar,
+      missions: def.missions,
+      rewards: def.rewards,
+      penalties: def.penalties,
+      completedToday: {},
+      penaltiesToday: [],
+    };
+  });
+  data.contentVersion = CONTENT_VERSION;
+  return { data, changed: true };
+};
+
 /* ============================================================ */
-export default function MissionsEnFamille() {
+export default function MissiesMetHetGezin() {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [activeChildId, setActiveChildId] = useState(null);
@@ -143,42 +203,42 @@ export default function MissionsEnFamille() {
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState(false);
   const [takeoff, setTakeoff] = useState(null); // { childName, reward }
-  const [newMission, setNewMission] = useState({ emoji: "⭐", label: "", points: 5, schoolOnly: false });
+  const [newMission, setNewMission] = useState({ emoji: "⭐", label: "", points: 5, schoolOnly: false, homeOnly: false, repeatable: false });
   const [newReward, setNewReward] = useState({ emoji: "🎁", label: "", cost: 50 });
   const [newPenalty, setNewPenalty] = useState({ emoji: "⚠️", label: "", points: 5 });
   const [newChild, setNewChild] = useState({ name: "", avatar: "🐰" });
   const saveTimer = useRef(null);
 
-  /* ---------- Sauvegarde (légèrement différée pour regrouper) ---------- */
+  /* ---------- Opslaan (licht uitgesteld om te groeperen) ---------- */
   const persist = useCallback((d) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         await writeState(d);
       } catch (e) {
-        console.error("Erreur de sauvegarde", e);
+        console.error("Fout bij het opslaan", e);
       }
     }, 300);
   }, []);
 
-  /* ---------- Chargement ---------- */
+  /* ---------- Laden ---------- */
   const load = useCallback(async () => {
     try {
       let loaded = null;
       try {
         loaded = await readState();
       } catch {
-        loaded = null; // clé absente ou erreur réseau : on repart des données par défaut
+        loaded = null; // ontbrekende sleutel of netwerkfout : standaardgegevens
       }
       let d = normalizeData(loaded || defaultData());
-      const { data: resetData } = applyDailyReset(d);
+      const { data: migrated, changed: contentChanged } = applyContentMigration(d);
+      const { data: resetData, changed: resetChanged } = applyDailyReset(migrated);
       setData(resetData);
       setActiveChildId((prev) => prev || (resetData.children[0] && resetData.children[0].id) || null);
-      if (!loaded) persist(resetData);
-      else if (resetData.lastReset !== d.lastReset) persist(resetData);
+      if (!loaded || contentChanged || resetChanged) persist(resetData);
       setLoadError(false);
     } catch (e) {
-      console.error("Erreur de chargement", e);
+      console.error("Fout bij het laden", e);
       setLoadError(true);
     }
   }, [persist]);
@@ -187,7 +247,7 @@ export default function MissionsEnFamille() {
     load();
   }, [load]);
 
-  /* ---------- Re-synchronisation quand l'app redevient visible ---------- */
+  /* ---------- Opnieuw synchroniseren wanneer de app weer zichtbaar wordt ---------- */
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") load();
@@ -211,7 +271,8 @@ export default function MissionsEnFamille() {
       return d;
     });
 
-  /* ---------- Actions enfant ---------- */
+  /* ---------- Acties kind ---------- */
+  // Missie die één keer per dag telt (aan/uit)
   const toggleMission = (childId, mission) => {
     updateChild(childId, (c) => {
       if (c.completedToday[mission.id]) {
@@ -226,6 +287,28 @@ export default function MissionsEnFamille() {
     });
   };
 
+  // Herhaalbare missie (meerdere keren per dag) : teller +1
+  const incMission = (childId, mission) => {
+    updateChild(childId, (c) => {
+      const n = Number(c.completedToday[mission.id]) || 0;
+      c.completedToday[mission.id] = n + 1;
+      c.points += mission.points;
+      c.totalPoints += mission.points;
+    });
+  };
+
+  // Herhaalbare missie : teller −1
+  const decMission = (childId, mission) => {
+    updateChild(childId, (c) => {
+      const n = Number(c.completedToday[mission.id]) || 0;
+      if (n <= 0) return;
+      if (n - 1 <= 0) delete c.completedToday[mission.id];
+      else c.completedToday[mission.id] = n - 1;
+      c.points = Math.max(0, c.points - mission.points);
+      c.totalPoints = Math.max(0, c.totalPoints - mission.points);
+    });
+  };
+
   const redeemReward = (child, reward) => {
     if (child.points < reward.cost) return;
     updateChild(child.id, (c) => {
@@ -237,14 +320,15 @@ export default function MissionsEnFamille() {
     setTimeout(() => setTakeoff(null), 3200);
   };
 
-  /* ---------- Actions parents ---------- */
+  /* ---------- Acties ouders ---------- */
   const adjustPoints = (childId, delta) =>
     updateChild(childId, (c) => {
       c.points = Math.max(0, c.points + delta);
       if (delta > 0) c.totalPoints += delta;
     });
 
-  /* Pénalités : appliquées par les parents, retirent des points du solde */
+  /* Minpunten : mogen nu door de ouders én door de kinderen zelf toegepast
+     worden ; ze halen punten van het saldo af */
   const applyPenalty = (childId, penalty) =>
     updateChild(childId, (c) => {
       c.points = Math.max(0, c.points - penalty.points);
@@ -286,9 +370,11 @@ export default function MissionsEnFamille() {
         label: newMission.label.trim(),
         points: Math.max(1, Number(newMission.points) || 5),
         schoolOnly: !!newMission.schoolOnly,
+        homeOnly: !!newMission.homeOnly,
+        repeatable: !!newMission.repeatable,
       });
     });
-    setNewMission({ emoji: "⭐", label: "", points: 5, schoolOnly: false });
+    setNewMission({ emoji: "⭐", label: "", points: 5, schoolOnly: false, homeOnly: false, repeatable: false });
   };
 
   const removeMission = (childId, missionId) =>
@@ -344,14 +430,14 @@ export default function MissionsEnFamille() {
     setActiveChildId((prev) => (prev === childId ? null : prev));
   };
 
-  /* ---------- Rendu ---------- */
+  /* ---------- Weergave ---------- */
   if (loadError)
     return (
       <Shell>
         <div className="card center-card">
           <div style={{ fontSize: 44 }}>🛰️</div>
-          <p>Impossible de charger les données. Vérifie la connexion, puis réessaie.</p>
-          <button className="btn btn-primary" onClick={load}>Réessayer</button>
+          <p>De gegevens konden niet geladen worden. Controleer de verbinding en probeer opnieuw.</p>
+          <button className="btn btn-primary" onClick={load}>Opnieuw proberen</button>
         </div>
       </Shell>
     );
@@ -361,7 +447,7 @@ export default function MissionsEnFamille() {
       <Shell>
         <div className="loading">
           <div className="loading-rocket">🚀</div>
-          <p>Préparation de la fusée…</p>
+          <p>De raket wordt klaargemaakt…</p>
         </div>
       </Shell>
     );
@@ -370,14 +456,14 @@ export default function MissionsEnFamille() {
 
   return (
     <Shell>
-      {/* En-tête */}
+      {/* Kop */}
       <header className="topbar">
         <h1>
-          Missions <span className="accent">en famille</span>
+          Familie<span className="accent">missies</span>
         </h1>
         <button
           className="gear"
-          aria-label={parentMode ? "Quitter le mode parents" : "Mode parents"}
+          aria-label={parentMode ? "Oudermodus verlaten" : "Oudermodus"}
           onClick={() => {
             if (parentMode) {
               setParentMode(false);
@@ -392,7 +478,7 @@ export default function MissionsEnFamille() {
         </button>
       </header>
 
-      {/* Sélecteur d'enfant */}
+      {/* Kindkeuze */}
       <div className="child-tabs" role="tablist">
         {data.children.map((c) => (
           <button
@@ -434,25 +520,32 @@ export default function MissionsEnFamille() {
           setNewChild={setNewChild}
         />
       ) : activeChild ? (
-        <ChildView child={activeChild} toggleMission={toggleMission} redeemReward={redeemReward} />
+        <ChildView
+          child={activeChild}
+          toggleMission={toggleMission}
+          incMission={incMission}
+          decMission={decMission}
+          redeemReward={redeemReward}
+          applyPenalty={applyPenalty}
+        />
       ) : (
         <div className="card center-card">
           <div style={{ fontSize: 44 }}>👨‍🚀</div>
-          <p>Ajoute un enfant dans le mode parents pour commencer l'aventure.</p>
+          <p>Voeg een kind toe in de oudermodus om het avontuur te starten.</p>
         </div>
       )}
 
-      {/* Clavier code parents */}
+      {/* Toetsenblok oudercode */}
       {pinOpen && (
         <div className="pin-overlay">
           <div className={"pin-box" + (pinError ? " shake" : "")}>
-            <h2>Code parents 🔒</h2>
-            <div className="pin-dots" aria-label={`${pinValue.length} chiffres saisis`}>
+            <h2>Oudercode 🔒</h2>
+            <div className="pin-dots" aria-label={`${pinValue.length} cijfers ingevoerd`}>
               {[0, 1, 2, 3, 4, 5].map((i) => (
                 <span key={i} className={"pin-dot" + (i < pinValue.length ? " filled" : "")} />
               ))}
             </div>
-            {pinError && <p className="pin-error">Mauvais code, réessaie.</p>}
+            {pinError && <p className="pin-error">Verkeerde code, probeer opnieuw.</p>}
             <div className="pin-pad">
               {["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✖"].map((k) => (
                 <button
@@ -489,14 +582,14 @@ export default function MissionsEnFamille() {
         </div>
       )}
 
-      {/* Animation de décollage */}
+      {/* Lanceeranimatie */}
       {takeoff && (
         <div className="takeoff-overlay" onClick={() => setTakeoff(null)}>
           <div className="takeoff-rocket">🚀</div>
           <div className="takeoff-msg">
             <div className="takeoff-emoji">{takeoff.reward.emoji}</div>
-            <h2>Bravo {takeoff.childName} !</h2>
-            <p>Récompense débloquée : {takeoff.reward.label}</p>
+            <h2>Goed gedaan {takeoff.childName}!</h2>
+            <p>Beloning vrijgespeeld: {takeoff.reward.label}</p>
           </div>
           <div className="takeoff-stars">
             {"✦✧⭐✦✧⭐✦✧".split("").map((s, i) => (
@@ -510,14 +603,17 @@ export default function MissionsEnFamille() {
 }
 
 /* ============================================================
-   Vue enfant : fusée, missions du jour, boutique, historique
+   Kindweergave : raket, missies van vandaag, winkel, geschiedenis
    ============================================================ */
-function ChildView({ child, toggleMission, redeemReward }) {
+function ChildView({ child, toggleMission, incMission, decMission, redeemReward, applyPenalty }) {
   const school = isSchoolDay();
-  const todaysMissions = child.missions.filter((m) => !m.schoolOnly || school);
-  const doneCount = todaysMissions.filter((m) => child.completedToday[m.id]).length;
+  const isVisible = (m) => (!m.schoolOnly || school) && (!m.homeOnly || !school);
+  const todaysMissions = child.missions.filter(isVisible);
+  const doneCount = todaysMissions.filter((m) =>
+    m.repeatable ? (Number(child.completedToday[m.id]) || 0) > 0 : !!child.completedToday[m.id]
+  ).length;
 
-  // Objectif de la fusée : la récompense la moins chère
+  // Raketdoel : de goedkoopste beloning
   const target = child.rewards.length
     ? [...child.rewards].sort((a, b) => a.cost - b.cost)[0]
     : null;
@@ -525,7 +621,7 @@ function ChildView({ child, toggleMission, redeemReward }) {
 
   return (
     <div className="child-view">
-      {/* Fusée de progression */}
+      {/* Voortgangsraket */}
       <section className="card rocket-card">
         <div className="rocket-track">
           <div className="rocket-goal">{target ? target.emoji : "🪐"}</div>
@@ -537,35 +633,70 @@ function ChildView({ child, toggleMission, redeemReward }) {
         <div className="rocket-info">
           <div className="pts-big">
             ⭐ {child.points}
-            <span className="pts-label">points</span>
+            <span className="pts-label">punten</span>
           </div>
           {target ? (
             progress >= 1 ? (
-              <p className="rocket-text ready">Prêt à décoller ! Va dans la boutique 🎉</p>
+              <p className="rocket-text ready">Klaar om te lanceren! Ga naar de winkel 🎉</p>
             ) : (
               <p className="rocket-text">
-                Encore <strong>{target.cost - child.points}</strong> points avant{" "}
+                Nog <strong>{target.cost - child.points}</strong> punten tot{" "}
                 <strong>{target.emoji} {target.label}</strong>
               </p>
             )
           ) : (
-            <p className="rocket-text">Aucune récompense pour l'instant.</p>
+            <p className="rocket-text">Nog geen beloningen.</p>
           )}
-          <p className="total-line">Total gagné depuis le début : 🏆 {child.totalPoints}</p>
+          <p className="total-line">Totaal verdiend sinds het begin: 🏆 {child.totalPoints}</p>
         </div>
       </section>
 
-      {/* Missions du jour */}
+      {/* Missies van vandaag */}
       <section>
         <h2 className="section-title">
-          Missions du jour
+          Missies van vandaag
           <span className="section-count">{doneCount}/{todaysMissions.length}</span>
         </h2>
         {todaysMissions.length === 0 && (
-          <div className="card center-card"><p>Pas de mission aujourd'hui. Repos, astronaute ! 🛌</p></div>
+          <div className="card center-card"><p>Geen missies vandaag. Rust maar uit, astronaut! 🛌</p></div>
         )}
         <div className="mission-grid">
           {todaysMissions.map((m) => {
+            if (m.repeatable) {
+              const count = Number(child.completedToday[m.id]) || 0;
+              return (
+                <div key={m.id} className={"mission-card repeat" + (count > 0 ? " done" : "")}>
+                  <button
+                    className="mission-main"
+                    onClick={() => incMission(child.id, m)}
+                    aria-label={`${m.label} — nog een keer`}
+                  >
+                    <span className="mission-emoji">{m.emoji}</span>
+                    <span className="mission-label">{m.label}</span>
+                    <span className="mission-pts">+{m.points} ⭐ per keer</span>
+                  </button>
+                  <div className="repeat-controls">
+                    <button
+                      className="repeat-btn"
+                      onClick={() => decMission(child.id, m)}
+                      disabled={count === 0}
+                      aria-label="Eén minder"
+                    >
+                      −
+                    </button>
+                    <span className="repeat-count" aria-label={`${count} keer gedaan`}>×{count}</span>
+                    <button
+                      className="repeat-btn plus"
+                      onClick={() => incMission(child.id, m)}
+                      aria-label="Eén meer"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="mission-tag repeat-tag">meerdere keren</span>
+                </div>
+              );
+            }
             const done = !!child.completedToday[m.id];
             return (
               <button
@@ -576,18 +707,40 @@ function ChildView({ child, toggleMission, redeemReward }) {
               >
                 <span className="mission-emoji">{done ? "✅" : m.emoji}</span>
                 <span className="mission-label">{m.label}</span>
-                <span className="mission-pts">{done ? "Gagné !" : `+${m.points} ⭐`}</span>
-                {m.schoolOnly && <span className="mission-tag">école</span>}
+                <span className="mission-pts">{done ? "Gelukt!" : `+${m.points} ⭐`}</span>
+                {m.schoolOnly && <span className="mission-tag">school</span>}
+                {m.homeOnly && <span className="mission-tag home-tag">thuis</span>}
               </button>
             );
           })}
         </div>
       </section>
 
-      {/* Points négatifs du jour */}
+      {/* Ik geef mezelf minpunten */}
+      {child.penalties && child.penalties.length > 0 && (
+        <section>
+          <h2 className="section-title">Oeps, ik geef mezelf minpunten</h2>
+          <div className="penalty-grid">
+            {child.penalties.map((p) => (
+              <button
+                key={p.id}
+                className="penalty-btn"
+                onClick={() => applyPenalty(child.id, p)}
+                aria-label={`${p.label} — ${p.points} punten eraf`}
+              >
+                <span className="penalty-emoji">{p.emoji}</span>
+                <span className="penalty-label">{p.label}</span>
+                <span className="penalty-pts">−{p.points} ⭐</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Minpunten van vandaag */}
       {child.penaltiesToday && child.penaltiesToday.length > 0 && (
         <section>
-          <h2 className="section-title">Oups du jour</h2>
+          <h2 className="section-title">Oeps van vandaag</h2>
           <div className="card oops-card">
             {child.penaltiesToday.map((p) => (
               <div key={p.id} className="history-row">
@@ -595,14 +748,14 @@ function ChildView({ child, toggleMission, redeemReward }) {
                 <span className="oops-pts">−{p.points} ⭐</span>
               </div>
             ))}
-            <p className="oops-note">Demain est un nouveau jour pour regagner des étoiles ! 💪</p>
+            <p className="oops-note">Morgen is een nieuwe dag om weer sterren te verdienen! 💪</p>
           </div>
         </section>
       )}
 
-      {/* Boutique */}
+      {/* Winkel */}
       <section>
-        <h2 className="section-title">Boutique de récompenses</h2>
+        <h2 className="section-title">Beloningswinkel</h2>
         <div className="reward-list">
           {child.rewards.map((r) => {
             const ok = child.points >= r.cost;
@@ -611,33 +764,33 @@ function ChildView({ child, toggleMission, redeemReward }) {
                 <span className="reward-emoji">{r.emoji}</span>
                 <div className="reward-main">
                   <span className="reward-label">{r.label}</span>
-                  <span className="reward-cost">⭐ {r.cost} points</span>
+                  <span className="reward-cost">⭐ {r.cost} punten</span>
                 </div>
                 <button
                   className={"btn " + (ok ? "btn-primary" : "btn-disabled")}
                   disabled={!ok}
                   onClick={() => redeemReward(child, r)}
                 >
-                  {ok ? "Décoller 🚀" : `Encore ${r.cost - child.points}`}
+                  {ok ? "Lanceren 🚀" : `Nog ${r.cost - child.points}`}
                 </button>
               </div>
             );
           })}
           {child.rewards.length === 0 && (
-            <div className="card center-card"><p>La boutique est vide pour l'instant.</p></div>
+            <div className="card center-card"><p>De winkel is nog leeg.</p></div>
           )}
         </div>
       </section>
 
-      {/* Historique */}
+      {/* Geschiedenis */}
       {child.history.length > 0 && (
         <section>
-          <h2 className="section-title">Récompenses gagnées</h2>
+          <h2 className="section-title">Verdiende beloningen</h2>
           <div className="card history-card">
             {child.history.slice(0, 6).map((h, i) => (
               <div key={i} className="history-row">
                 <span>{h.emoji} {h.label}</span>
-                <span className="history-date">{frDate(h.date)}</span>
+                <span className="history-date">{nlDate(h.date)}</span>
               </div>
             ))}
           </div>
@@ -648,7 +801,7 @@ function ChildView({ child, toggleMission, redeemReward }) {
 }
 
 /* ============================================================
-   Mode parents
+   Oudermodus
    ============================================================ */
 function ParentPanel(props) {
   const {
@@ -658,17 +811,25 @@ function ParentPanel(props) {
     newPenalty, setNewPenalty, newChild, setNewChild,
   } = props;
 
+  const missionTags = (m) => {
+    const t = [];
+    if (m.schoolOnly) t.push("school");
+    if (m.homeOnly) t.push("buiten school");
+    if (m.repeatable) t.push("meerdere keren/dag");
+    return t.length ? " · " + t.join(" · ") : "";
+  };
+
   return (
     <div className="parent-panel">
       <div className="card parent-banner">
-        <span>🛠️ Mode parents — enfant sélectionné : <strong>{activeChild ? `${activeChild.avatar} ${activeChild.name}` : "aucun"}</strong></span>
+        <span>🛠️ Oudermodus — gekozen kind: <strong>{activeChild ? `${activeChild.avatar} ${activeChild.name}` : "geen"}</strong></span>
       </div>
 
       {activeChild && (
         <>
-          {/* Ajuster les points */}
+          {/* Punten aanpassen */}
           <section className="card">
-            <h3>Points de {activeChild.name} : ⭐ {activeChild.points}</h3>
+            <h3>Punten van {activeChild.name}: ⭐ {activeChild.points}</h3>
             <div className="row">
               {[-10, -5, +5, +10].map((d) => (
                 <button key={d} className="btn btn-ghost" onClick={() => adjustPoints(activeChild.id, d)}>
@@ -678,13 +839,13 @@ function ParentPanel(props) {
             </div>
           </section>
 
-          {/* Missions */}
+          {/* Missies */}
           <section className="card">
-            <h3>Missions de {activeChild.name}</h3>
+            <h3>Missies van {activeChild.name}</h3>
             {activeChild.missions.map((m) => (
               <div key={m.id} className="edit-row">
-                <span>{m.emoji} {m.label} — {m.points} pts{m.schoolOnly ? " · école" : ""}</span>
-                <button className="btn btn-danger" onClick={() => removeMission(activeChild.id, m.id)}>Retirer</button>
+                <span>{m.emoji} {m.label} — {m.points} ptn{missionTags(m)}</span>
+                <button className="btn btn-danger" onClick={() => removeMission(activeChild.id, m.id)}>Verwijderen</button>
               </div>
             ))}
             <div className="add-block">
@@ -694,18 +855,18 @@ function ParentPanel(props) {
                   value={newMission.emoji}
                   maxLength={4}
                   onChange={(e) => setNewMission({ ...newMission, emoji: e.target.value })}
-                  aria-label="Émoji de la mission"
+                  aria-label="Emoji van de missie"
                 />
                 <input
                   className="input grow"
-                  placeholder="Nouvelle mission…"
+                  placeholder="Nieuwe missie…"
                   value={newMission.label}
                   onChange={(e) => setNewMission({ ...newMission, label: e.target.value })}
                 />
               </div>
               <div className="row">
                 <label className="inline-label">
-                  Points
+                  Punten
                   <input
                     className="input input-num"
                     type="number"
@@ -714,26 +875,44 @@ function ParentPanel(props) {
                     onChange={(e) => setNewMission({ ...newMission, points: e.target.value })}
                   />
                 </label>
+                <button className="btn btn-primary" onClick={() => addMission(activeChild.id)}>Toevoegen</button>
+              </div>
+              <div className="row">
                 <label className="inline-label check">
                   <input
                     type="checkbox"
                     checked={newMission.schoolOnly}
-                    onChange={(e) => setNewMission({ ...newMission, schoolOnly: e.target.checked })}
+                    onChange={(e) => setNewMission({ ...newMission, schoolOnly: e.target.checked, homeOnly: e.target.checked ? false : newMission.homeOnly })}
                   />
-                  Jours d'école seulement
+                  Alleen op schooldagen
                 </label>
-                <button className="btn btn-primary" onClick={() => addMission(activeChild.id)}>Ajouter</button>
+                <label className="inline-label check">
+                  <input
+                    type="checkbox"
+                    checked={newMission.homeOnly}
+                    onChange={(e) => setNewMission({ ...newMission, homeOnly: e.target.checked, schoolOnly: e.target.checked ? false : newMission.schoolOnly })}
+                  />
+                  Alleen buiten school
+                </label>
+                <label className="inline-label check">
+                  <input
+                    type="checkbox"
+                    checked={newMission.repeatable}
+                    onChange={(e) => setNewMission({ ...newMission, repeatable: e.target.checked })}
+                  />
+                  Meerdere keren per dag
+                </label>
               </div>
             </div>
           </section>
 
-          {/* Récompenses */}
+          {/* Beloningen */}
           <section className="card">
-            <h3>Récompenses de {activeChild.name}</h3>
+            <h3>Beloningen van {activeChild.name}</h3>
             {activeChild.rewards.map((r) => (
               <div key={r.id} className="edit-row">
-                <span>{r.emoji} {r.label} — {r.cost} pts</span>
-                <button className="btn btn-danger" onClick={() => removeReward(activeChild.id, r.id)}>Retirer</button>
+                <span>{r.emoji} {r.label} — {r.cost} ptn</span>
+                <button className="btn btn-danger" onClick={() => removeReward(activeChild.id, r.id)}>Verwijderen</button>
               </div>
             ))}
             <div className="add-block">
@@ -743,18 +922,18 @@ function ParentPanel(props) {
                   value={newReward.emoji}
                   maxLength={4}
                   onChange={(e) => setNewReward({ ...newReward, emoji: e.target.value })}
-                  aria-label="Émoji de la récompense"
+                  aria-label="Emoji van de beloning"
                 />
                 <input
                   className="input grow"
-                  placeholder="Nouvelle récompense…"
+                  placeholder="Nieuwe beloning…"
                   value={newReward.label}
                   onChange={(e) => setNewReward({ ...newReward, label: e.target.value })}
                 />
               </div>
               <div className="row">
                 <label className="inline-label">
-                  Coût
+                  Kosten
                   <input
                     className="input input-num"
                     type="number"
@@ -763,16 +942,17 @@ function ParentPanel(props) {
                     onChange={(e) => setNewReward({ ...newReward, cost: e.target.value })}
                   />
                 </label>
-                <button className="btn btn-primary" onClick={() => addReward(activeChild.id)}>Ajouter</button>
+                <button className="btn btn-primary" onClick={() => addReward(activeChild.id)}>Toevoegen</button>
               </div>
             </div>
           </section>
-          {/* Points négatifs */}
+
+          {/* Minpunten */}
           <section className="card penalty-card">
-            <h3>Points négatifs de {activeChild.name}</h3>
+            <h3>Minpunten van {activeChild.name}</h3>
             <p className="penalty-hint">
-              Un tap retire les points. À utiliser avec parcimonie — les missions réussies restent le
-              moteur principal !
+              Eén tik haalt de punten eraf. De kinderen kunnen zichzelf ook minpunten geven vanuit hun
+              eigen scherm. Gebruik met mate — geslaagde missies blijven de belangrijkste motor!
             </p>
             <div className="penalty-grid">
               {activeChild.penalties.map((p) => (
@@ -785,11 +965,11 @@ function ParentPanel(props) {
             </div>
             {activeChild.penaltiesToday.length > 0 && (
               <div className="penalty-applied">
-                <h4>Appliqués aujourd'hui</h4>
+                <h4>Vandaag toegepast</h4>
                 {activeChild.penaltiesToday.map((p) => (
                   <div key={p.id} className="edit-row">
-                    <span>{p.emoji} {p.label} — −{p.points} pts</span>
-                    <button className="btn btn-ghost" onClick={() => undoPenalty(activeChild.id, p.id)}>Annuler</button>
+                    <span>{p.emoji} {p.label} — −{p.points} ptn</span>
+                    <button className="btn btn-ghost" onClick={() => undoPenalty(activeChild.id, p.id)}>Ongedaan maken</button>
                   </div>
                 ))}
               </div>
@@ -801,18 +981,18 @@ function ParentPanel(props) {
                   value={newPenalty.emoji}
                   maxLength={4}
                   onChange={(e) => setNewPenalty({ ...newPenalty, emoji: e.target.value })}
-                  aria-label="Émoji du point négatif"
+                  aria-label="Emoji van het minpunt"
                 />
                 <input
                   className="input grow"
-                  placeholder="Nouveau point négatif…"
+                  placeholder="Nieuw minpunt…"
                   value={newPenalty.label}
                   onChange={(e) => setNewPenalty({ ...newPenalty, label: e.target.value })}
                 />
               </div>
               <div className="row">
                 <label className="inline-label">
-                  Points retirés
+                  Punten eraf
                   <input
                     className="input input-num"
                     type="number"
@@ -821,15 +1001,15 @@ function ParentPanel(props) {
                     onChange={(e) => setNewPenalty({ ...newPenalty, points: e.target.value })}
                   />
                 </label>
-                <button className="btn btn-primary" onClick={() => addPenalty(activeChild.id)}>Ajouter</button>
+                <button className="btn btn-primary" onClick={() => addPenalty(activeChild.id)}>Toevoegen</button>
               </div>
               {activeChild.penalties.length > 0 && (
                 <details className="penalty-manage">
-                  <summary>Gérer la liste</summary>
+                  <summary>Lijst beheren</summary>
                   {activeChild.penalties.map((p) => (
                     <div key={p.id} className="edit-row">
-                      <span>{p.emoji} {p.label} — −{p.points} pts</span>
-                      <button className="btn btn-danger" onClick={() => removePenalty(activeChild.id, p.id)}>Retirer</button>
+                      <span>{p.emoji} {p.label} — −{p.points} ptn</span>
+                      <button className="btn btn-danger" onClick={() => removePenalty(activeChild.id, p.id)}>Verwijderen</button>
                     </div>
                   ))}
                 </details>
@@ -839,24 +1019,24 @@ function ParentPanel(props) {
         </>
       )}
 
-      {/* Gestion des enfants */}
+      {/* Beheer van de kinderen */}
       <section className="card">
-        <h3>Enfants</h3>
+        <h3>Kinderen</h3>
         {data.children.map((c) => (
           <div key={c.id} className="edit-row">
-            <span>{c.avatar} {c.name} — ⭐ {c.points} (total {c.totalPoints})</span>
-            <button className="btn btn-danger" onClick={() => removeChild(c.id)}>Retirer</button>
+            <span>{c.avatar} {c.name} — ⭐ {c.points} (totaal {c.totalPoints})</span>
+            <button className="btn btn-danger" onClick={() => removeChild(c.id)}>Verwijderen</button>
           </div>
         ))}
         <div className="add-block">
           <div className="row">
             <input
               className="input grow"
-              placeholder="Prénom…"
+              placeholder="Voornaam…"
               value={newChild.name}
               onChange={(e) => setNewChild({ ...newChild, name: e.target.value })}
             />
-            <button className="btn btn-primary" onClick={addChild}>Ajouter</button>
+            <button className="btn btn-primary" onClick={addChild}>Toevoegen</button>
           </div>
           <div className="row avatar-row">
             {AVATARS.map((a) => (
@@ -864,7 +1044,7 @@ function ParentPanel(props) {
                 key={a}
                 className={"avatar-pick" + (newChild.avatar === a ? " picked" : "")}
                 onClick={() => setNewChild({ ...newChild, avatar: a })}
-                aria-label={`Choisir l'avatar ${a}`}
+                aria-label={`Kies avatar ${a}`}
               >
                 {a}
               </button>
@@ -874,16 +1054,17 @@ function ParentPanel(props) {
       </section>
 
       <p className="parent-note">
-        ℹ️ Les missions se réinitialisent chaque jour ; les points sont conservés. Les missions « école »
-        n'apparaissent que du lundi au vendredi. Les données sont partagées entre tous les appareils qui
-        utilisent le lien publié — gardez-le privé.
+        ℹ️ De missies worden elke dag opnieuw ingesteld; de punten blijven behouden. De missies met
+        « school » verschijnen alleen van maandag tot vrijdag, die met « buiten school » alleen in het
+        weekend en de vakantie. Missies « meerdere keren per dag » kunnen vaker afgevinkt worden. De
+        gegevens worden gedeeld tussen alle toestellen die de gepubliceerde link gebruiken — houd hem privé.
       </p>
     </div>
   );
 }
 
 /* ============================================================
-   Habillage global + styles
+   Globale omhulling + stijlen
    ============================================================ */
 function Shell({ children }) {
   return (
@@ -909,7 +1090,7 @@ const CSS = `
   overflow-x: hidden;
 }
 
-/* Ciel étoilé */
+/* Sterrenhemel */
 .stars {
   position: fixed; inset: 0; pointer-events: none; opacity: .8;
   background-image:
@@ -925,7 +1106,7 @@ const CSS = `
 
 .content { position: relative; max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
 
-/* En-tête */
+/* Kop */
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 16px; }
 .topbar h1 { font-size: clamp(24px, 5vw, 34px); font-weight: 700; letter-spacing: .5px; }
 .topbar .accent { color: #FFD166; }
@@ -933,11 +1114,11 @@ const CSS = `
   background: rgba(255,255,255,.12); border: none; border-radius: 50%;
   width: 46px; height: 46px; font-size: 20px; cursor: pointer; color: #fff;
 }
-.gear:focus-visible, .btn:focus-visible, .child-tab:focus-visible, .mission-card:focus-visible, .avatar-pick:focus-visible {
+.gear:focus-visible, .btn:focus-visible, .child-tab:focus-visible, .mission-card:focus-visible, .mission-main:focus-visible, .repeat-btn:focus-visible, .avatar-pick:focus-visible, .penalty-btn:focus-visible {
   outline: 3px solid #FFD166; outline-offset: 2px;
 }
 
-/* Onglets enfants */
+/* Kindtabs */
 .child-tabs { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .child-tab {
   flex: 1; min-width: 130px; display: flex; align-items: center; gap: 8px; justify-content: center;
@@ -950,14 +1131,14 @@ const CSS = `
 .child-name { font-weight: 600; }
 .child-pts { font-size: 13px; opacity: .85; }
 
-/* Cartes génériques */
+/* Algemene kaarten */
 .card {
   background: #FFFFFF; color: #2B2B4A; border-radius: 22px; padding: 16px 18px;
   box-shadow: 0 6px 20px rgba(0,0,0,.20);
 }
 .center-card { text-align: center; display: grid; gap: 10px; justify-items: center; }
 
-/* Fusée */
+/* Raket */
 .rocket-card { display: flex; gap: 18px; align-items: stretch; margin-bottom: 22px; }
 .rocket-track { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .rocket-goal { font-size: 26px; }
@@ -981,7 +1162,7 @@ const CSS = `
 .rocket-text.ready { color: #1FA97C; font-weight: 600; }
 .total-line { font-size: 13px; color: #8A87A6; }
 
-/* Sections */
+/* Secties */
 .section-title {
   font-size: 20px; font-weight: 700; margin: 6px 4px 12px;
   display: flex; align-items: center; gap: 10px;
@@ -991,7 +1172,7 @@ const CSS = `
   border-radius: 999px; padding: 3px 10px;
 }
 
-/* Missions */
+/* Missies */
 .mission-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
 .mission-card {
   position: relative; background: #FFFFFF; color: #2B2B4A; border: 3px solid transparent;
@@ -1011,9 +1192,29 @@ const CSS = `
   position: absolute; top: 8px; right: 10px; font-size: 10px; font-weight: 600;
   background: #EEE9FF; color: #6C63FF; border-radius: 999px; padding: 2px 8px;
 }
+.mission-tag.home-tag { background: #FFF1E0; color: #E08A00; }
+.mission-tag.repeat-tag { position: static; margin-top: 2px; background: #E4FBF2; color: #1FA97C; }
 @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
 
-/* Boutique */
+/* Herhaalbare missie */
+.mission-card.repeat { cursor: default; padding-top: 14px; }
+.mission-main {
+  background: transparent; border: none; font-family: inherit; color: inherit;
+  cursor: pointer; display: grid; gap: 6px; justify-items: center; text-align: center; width: 100%;
+}
+.mission-main:active { transform: scale(.96); }
+.repeat-controls { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.repeat-btn {
+  font-family: inherit; font-size: 22px; font-weight: 700; line-height: 1;
+  width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+  background: #EEE9FF; color: #4A3FBF; transition: transform .12s ease;
+}
+.repeat-btn.plus { background: #FF6B6B; color: #fff; }
+.repeat-btn:active { transform: scale(.9); }
+.repeat-btn:disabled { background: #E8E6F5; color: #B7B4CC; cursor: not-allowed; }
+.repeat-count { font-size: 20px; font-weight: 700; min-width: 40px; color: #2B2B4A; }
+
+/* Winkel */
 .reward-list { display: grid; gap: 10px; margin-bottom: 24px; }
 .reward-row { display: flex; align-items: center; gap: 12px; }
 .reward-emoji { font-size: 30px; }
@@ -1021,7 +1222,7 @@ const CSS = `
 .reward-label { font-weight: 600; }
 .reward-cost { font-size: 13px; color: #7A7794; }
 
-/* Boutons */
+/* Knoppen */
 .btn {
   font-family: inherit; font-size: 15px; font-weight: 600; border: none;
   border-radius: 14px; padding: 10px 16px; cursor: pointer; transition: transform .12s ease;
@@ -1032,12 +1233,12 @@ const CSS = `
 .btn-danger { background: #FFE3E3; color: #C0392B; font-size: 13px; padding: 6px 12px; }
 .btn-disabled { background: #E8E6F5; color: #9A97B5; cursor: not-allowed; }
 
-/* Historique */
+/* Geschiedenis */
 .history-card { display: grid; gap: 8px; }
 .history-row { display: flex; justify-content: space-between; font-size: 15px; }
 .history-date { color: #8A87A6; font-size: 13px; }
 
-/* Mode parents */
+/* Oudermodus */
 .parent-panel { display: grid; gap: 14px; }
 .parent-banner { background: #FFF6DE; }
 .parent-panel h3 { font-size: 17px; margin-bottom: 10px; }
@@ -1065,12 +1266,12 @@ const CSS = `
 .avatar-pick.picked { border-color: #6C63FF; background: #EEE9FF; }
 .parent-note { font-size: 13px; opacity: .8; line-height: 1.5; padding: 0 6px; }
 
-/* Chargement */
+/* Laden */
 .loading { display: grid; justify-items: center; gap: 12px; padding: 80px 0; font-size: 17px; }
 .loading-rocket { font-size: 52px; animation: hover 1.2s ease-in-out infinite alternate; }
 @keyframes hover { from { transform: translateY(0) rotate(-45deg); } to { transform: translateY(-12px) rotate(-45deg); } }
 
-/* Décollage */
+/* Lancering */
 .takeoff-overlay {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
   background: rgba(17, 17, 46, .92); animation: fadein .3s ease;
@@ -1104,10 +1305,10 @@ const CSS = `
 @keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(.6); } 50% { opacity: 1; transform: scale(1.2); } }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 
-/* Points négatifs */
+/* Minpunten */
 .penalty-card { border: 2px solid #FFD9D9; }
 .penalty-hint { font-size: 13px; color: #8A87A6; margin-bottom: 10px; line-height: 1.4; }
-.penalty-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.penalty-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 24px; }
 .penalty-btn {
   font-family: inherit; background: #FFF1F1; border: 2px solid #FFD9D9; border-radius: 16px;
   padding: 12px 10px; cursor: pointer; display: grid; gap: 4px; justify-items: center;
@@ -1120,13 +1321,14 @@ const CSS = `
 .penalty-applied { margin-top: 10px; }
 .penalty-applied h4 { font-size: 14px; color: #4A4766; margin-bottom: 4px; }
 .penalty-manage summary { cursor: pointer; font-size: 14px; color: #6C63FF; font-weight: 600; padding: 4px 0; }
+.penalty-card .penalty-grid { margin-bottom: 8px; }
 
-/* Carte Oups (vue enfant) */
+/* Oeps-kaart (kindweergave) */
 .oops-card { display: grid; gap: 8px; border: 2px solid #FFD9D9; margin-bottom: 24px; }
 .oops-pts { color: #C0392B; font-weight: 700; }
 .oops-note { font-size: 13px; color: #8A87A6; margin-top: 4px; }
 
-/* Clavier code parents */
+/* Toetsenblok oudercode */
 .pin-overlay {
   position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
   background: rgba(17, 17, 46, .88); animation: fadein .25s ease;

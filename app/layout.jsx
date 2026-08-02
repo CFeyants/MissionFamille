@@ -1,7 +1,7 @@
 export const metadata = {
-  title: "Missions en famille",
+  title: "Familiemissies",
   description:
-    "Missions et récompenses pour les enfants — gagne des points, remplis la fusée et débloque tes récompenses !",
+    "Missies en beloningen voor de kinderen — verdien punten, vul de raket en speel je beloningen vrij!",
   manifest: "/manifest.webmanifest",
 };
 
@@ -14,7 +14,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="fr">
+    <html lang="nl">
       <body>{children}</body>
     </html>
   );
