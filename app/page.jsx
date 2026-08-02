@@ -13,7 +13,7 @@ const AVATARS = ["🦊", "🐯", "🐰", "🐼", "🦁", "🐨", "🐸", "🦄",
 // Versie van de inhoud (missies/beloningen/minpunten). Bij een verhoging
 // worden de standaardlijsten van Romane & Théo opnieuw opgebouwd terwijl de
 // verdiende punten behouden blijven.
-const CONTENT_VERSION = 2;
+const CONTENT_VERSION = 3;
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -76,7 +76,7 @@ const defaultData = () => ({
         { id: uid(), emoji: "🏃", label: "Me meteen klaarmaken om te vertrekken (schoenen en jas aan)", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🙂", label: "Niet mopperen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🧸", label: "Mijn kamer opruimen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
-        { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 5, schoolOnly: false, homeOnly: false, repeatable: true, maxPerDay: 2 },
         { id: uid(), emoji: "🧻", label: "Handdoeken aan het handdoekenrek hangen", points: 5, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🌙", label: "Zonder mopperen naar bed gaan", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🧹", label: "Meehelpen met een huishoudelijke taak", points: 5, schoolOnly: false, homeOnly: false, repeatable: true },
@@ -85,10 +85,10 @@ const defaultData = () => ({
         { id: uid(), emoji: "🥐", label: "Zelf mijn boterhammen smeren (ontbijt en lunch)", points: 10, schoolOnly: false, homeOnly: true, repeatable: false },
       ],
       rewards: [
-        { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 60 },
-        { id: uid(), emoji: "📺", label: "20 min extra tv", cost: 120 },
-        { id: uid(), emoji: "📖", label: "10 min extra voorlezen in bed", cost: 60 },
-        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 80 },
+        { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 30 },
+        { id: uid(), emoji: "📖", label: "10 min extra voorlezen in bed", cost: 40 },
+        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 50 },
+        { id: uid(), emoji: "📺", label: "20 min extra tv", cost: 70 },
       ],
       penalties: [
         { id: uid(), emoji: "😤", label: "Gemopperd", points: 5 },
@@ -111,7 +111,7 @@ const defaultData = () => ({
         { id: uid(), emoji: "💛", label: "Lief zijn voor Romane", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "✏️", label: "Niet mopperen om mijn huiswerk te maken", points: 10, schoolOnly: true, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "👕", label: "Mijn kleren opruimen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
-        { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 5, schoolOnly: false, homeOnly: false, repeatable: true, maxPerDay: 2 },
         { id: uid(), emoji: "🧻", label: "Handdoeken aan het handdoekenrek hangen", points: 5, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🌙", label: "Zonder mopperen naar bed gaan", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🧹", label: "Meehelpen met een huishoudelijke taak", points: 5, schoolOnly: false, homeOnly: false, repeatable: true },
@@ -120,10 +120,10 @@ const defaultData = () => ({
         { id: uid(), emoji: "🥐", label: "Zelf mijn boterhammen smeren (ontbijt en lunch)", points: 10, schoolOnly: false, homeOnly: true, repeatable: false },
       ],
       rewards: [
-        { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 60 },
-        { id: uid(), emoji: "🎮", label: "15 min extra spelen", cost: 150 },
-        { id: uid(), emoji: "🌙", label: "15 min later naar bed dan Romane", cost: 100 },
-        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 80 },
+        { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 30 },
+        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 50 },
+        { id: uid(), emoji: "🎮", label: "15 min extra spelen", cost: 60 },
+        { id: uid(), emoji: "🌙", label: "15 min later naar bed dan Romane", cost: 90 },
       ],
       penalties: [
         { id: uid(), emoji: "🙅", label: "Niet lief voor Romane", points: 10 },
@@ -161,6 +161,8 @@ const normalizeData = (data) => {
       if (typeof m.schoolOnly !== "boolean") m.schoolOnly = false;
       if (typeof m.homeOnly !== "boolean") m.homeOnly = false;
       if (typeof m.repeatable !== "boolean") m.repeatable = false;
+      // maxPerDay : 0/undefined = onbeperkt aantal keren per dag
+      m.maxPerDay = Number(m.maxPerDay) > 0 ? Number(m.maxPerDay) : 0;
     });
   });
   return data;
@@ -203,7 +205,7 @@ export default function MissiesMetHetGezin() {
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState(false);
   const [takeoff, setTakeoff] = useState(null); // { childName, reward }
-  const [newMission, setNewMission] = useState({ emoji: "⭐", label: "", points: 5, schoolOnly: false, homeOnly: false, repeatable: false });
+  const [newMission, setNewMission] = useState({ emoji: "⭐", label: "", points: 5, schoolOnly: false, homeOnly: false, repeatable: false, maxPerDay: 0 });
   const [newReward, setNewReward] = useState({ emoji: "🎁", label: "", cost: 50 });
   const [newPenalty, setNewPenalty] = useState({ emoji: "⚠️", label: "", points: 5 });
   const [newChild, setNewChild] = useState({ name: "", avatar: "🐰" });
@@ -291,6 +293,8 @@ export default function MissiesMetHetGezin() {
   const incMission = (childId, mission) => {
     updateChild(childId, (c) => {
       const n = Number(c.completedToday[mission.id]) || 0;
+      // Plafond aantal keren per dag, indien ingesteld
+      if (mission.maxPerDay && n >= mission.maxPerDay) return;
       c.completedToday[mission.id] = n + 1;
       c.points += mission.points;
       c.totalPoints += mission.points;
@@ -372,9 +376,10 @@ export default function MissiesMetHetGezin() {
         schoolOnly: !!newMission.schoolOnly,
         homeOnly: !!newMission.homeOnly,
         repeatable: !!newMission.repeatable,
+        maxPerDay: newMission.repeatable && Number(newMission.maxPerDay) > 0 ? Number(newMission.maxPerDay) : 0,
       });
     });
-    setNewMission({ emoji: "⭐", label: "", points: 5, schoolOnly: false, homeOnly: false, repeatable: false });
+    setNewMission({ emoji: "⭐", label: "", points: 5, schoolOnly: false, homeOnly: false, repeatable: false, maxPerDay: 0 });
   };
 
   const removeMission = (childId, missionId) =>
@@ -664,11 +669,13 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
           {todaysMissions.map((m) => {
             if (m.repeatable) {
               const count = Number(child.completedToday[m.id]) || 0;
+              const atMax = m.maxPerDay > 0 && count >= m.maxPerDay;
               return (
                 <div key={m.id} className={"mission-card repeat" + (count > 0 ? " done" : "")}>
                   <button
                     className="mission-main"
                     onClick={() => incMission(child.id, m)}
+                    disabled={atMax}
                     aria-label={`${m.label} — nog een keer`}
                   >
                     <span className="mission-emoji">{m.emoji}</span>
@@ -684,16 +691,21 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
                     >
                       −
                     </button>
-                    <span className="repeat-count" aria-label={`${count} keer gedaan`}>×{count}</span>
+                    <span className="repeat-count" aria-label={`${count} keer gedaan`}>
+                      ×{count}{m.maxPerDay > 0 ? `/${m.maxPerDay}` : ""}
+                    </span>
                     <button
                       className="repeat-btn plus"
                       onClick={() => incMission(child.id, m)}
+                      disabled={atMax}
                       aria-label="Eén meer"
                     >
                       +
                     </button>
                   </div>
-                  <span className="mission-tag repeat-tag">meerdere keren</span>
+                  <span className="mission-tag repeat-tag">
+                    {m.maxPerDay > 0 ? `${m.maxPerDay}× per dag` : "meerdere keren"}
+                  </span>
                 </div>
               );
             }
@@ -757,7 +769,7 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
       <section>
         <h2 className="section-title">Beloningswinkel</h2>
         <div className="reward-list">
-          {child.rewards.map((r) => {
+          {[...child.rewards].sort((a, b) => a.cost - b.cost).map((r) => {
             const ok = child.points >= r.cost;
             return (
               <div key={r.id} className="reward-row card">
@@ -815,7 +827,7 @@ function ParentPanel(props) {
     const t = [];
     if (m.schoolOnly) t.push("school");
     if (m.homeOnly) t.push("buiten school");
-    if (m.repeatable) t.push("meerdere keren/dag");
+    if (m.repeatable) t.push(m.maxPerDay > 0 ? `${m.maxPerDay}× per dag` : "meerdere keren/dag");
     return t.length ? " · " + t.join(" · ") : "";
   };
 
@@ -898,10 +910,22 @@ function ParentPanel(props) {
                   <input
                     type="checkbox"
                     checked={newMission.repeatable}
-                    onChange={(e) => setNewMission({ ...newMission, repeatable: e.target.checked })}
+                    onChange={(e) => setNewMission({ ...newMission, repeatable: e.target.checked, maxPerDay: e.target.checked ? newMission.maxPerDay : 0 })}
                   />
                   Meerdere keren per dag
                 </label>
+                {newMission.repeatable && (
+                  <label className="inline-label">
+                    Max/dag (0 = ∞)
+                    <input
+                      className="input input-num"
+                      type="number"
+                      min="0"
+                      value={newMission.maxPerDay}
+                      onChange={(e) => setNewMission({ ...newMission, maxPerDay: e.target.value })}
+                    />
+                  </label>
+                )}
               </div>
             </div>
           </section>
@@ -909,7 +933,7 @@ function ParentPanel(props) {
           {/* Beloningen */}
           <section className="card">
             <h3>Beloningen van {activeChild.name}</h3>
-            {activeChild.rewards.map((r) => (
+            {[...activeChild.rewards].sort((a, b) => a.cost - b.cost).map((r) => (
               <div key={r.id} className="edit-row">
                 <span>{r.emoji} {r.label} — {r.cost} ptn</span>
                 <button className="btn btn-danger" onClick={() => removeReward(activeChild.id, r.id)}>Verwijderen</button>
@@ -1203,6 +1227,8 @@ const CSS = `
   cursor: pointer; display: grid; gap: 6px; justify-items: center; text-align: center; width: 100%;
 }
 .mission-main:active { transform: scale(.96); }
+.mission-main:disabled { cursor: default; opacity: .75; }
+.mission-card.repeat .mission-main:disabled:active { transform: none; }
 .repeat-controls { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .repeat-btn {
   font-family: inherit; font-size: 22px; font-weight: 700; line-height: 1;
