@@ -1,0 +1,10 @@
+{
+  "name": "Missions en famille",
+  "short_name": "Missions",
+  "description": "Missions et récompenses pour les enfants — gagne des points et remplis la fusée !",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#171738",
+  "theme_color": "#171738",
+  "lang": "fr"
+}
