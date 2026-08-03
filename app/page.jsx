@@ -30,6 +30,21 @@ const isSchoolDay = () => {
   return day >= 1 && day <= 5;
 };
 
+// Datum van de maandag van de huidige week (YYYY-MM-DD), voor de wekelijkse reset
+const getWeekStart = () => {
+  const d = new Date();
+  const diff = (d.getDay() + 6) % 7; // aantal dagen sinds maandag
+  d.setDate(d.getDate() - diff);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+// Aantal dagen tot de volgende maandag (0 = vandaag is maandag)
+const daysUntilMonday = () => {
+  const day = new Date().getDay(); // 0=zo .. 6=za
+  return day === 1 ? 0 : (8 - day) % 7;
+};
+
 const nlDate = (iso) => {
   try {
     const [, m, d] = iso.split("-");
@@ -63,6 +78,7 @@ async function writeState(data) {
      repeatable  → mag meerdere keren per dag afgevinkt worden (teller) */
 const defaultData = () => ({
   lastReset: getToday(),
+  lastWeekReset: getWeekStart(),
   contentVersion: CONTENT_VERSION,
   children: [
     {
@@ -151,8 +167,27 @@ const applyDailyReset = (data) => {
   };
 };
 
+/* ---------- Wekelijkse reset van het saldo (elke maandag) ----------
+   Het saldo (spaarpot) wordt wekelijks op 0 gezet zodat de kinderen niet
+   eindeloos uren tv/spelen kunnen opsparen. Het levenstotaal blijft behouden. */
+const applyWeeklyReset = (data) => {
+  const wk = getWeekStart();
+  if (data.lastWeekReset === wk) return { data, changed: false };
+  return {
+    data: {
+      ...data,
+      lastWeekReset: wk,
+      children: data.children.map((c) => ({ ...c, points: 0 })),
+    },
+    changed: true,
+  };
+};
+
 /* Migratie : zorgt dat de minpunt-velden bestaan op reeds opgeslagen gegevens */
 const normalizeData = (data) => {
+  // Bestaande gegevens zonder weekmarkering : op de huidige week zetten zodat
+  // het saldo nu niet meteen gewist wordt (de reset volgt pas maandag).
+  if (!data.lastWeekReset) data.lastWeekReset = getWeekStart();
   data.children.forEach((c) => {
     if (!Array.isArray(c.penalties)) c.penalties = [];
     if (!Array.isArray(c.penaltiesToday)) c.penaltiesToday = [];
@@ -234,10 +269,11 @@ export default function MissiesMetHetGezin() {
       }
       let d = normalizeData(loaded || defaultData());
       const { data: migrated, changed: contentChanged } = applyContentMigration(d);
-      const { data: resetData, changed: resetChanged } = applyDailyReset(migrated);
+      const { data: weekReset, changed: weekChanged } = applyWeeklyReset(migrated);
+      const { data: resetData, changed: resetChanged } = applyDailyReset(weekReset);
       setData(resetData);
       setActiveChildId((prev) => prev || (resetData.children[0] && resetData.children[0].id) || null);
-      if (!loaded || contentChanged || resetChanged) persist(resetData);
+      if (!loaded || contentChanged || weekChanged || resetChanged) persist(resetData);
       setLoadError(false);
     } catch (e) {
       console.error("Fout bij het laden", e);
@@ -676,6 +712,14 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
             <p className="rocket-text">Nog geen beloningen.</p>
           )}
           <p className="total-line">Totaal verdiend sinds het begin: 🏆 {child.totalPoints}</p>
+          <p className="week-line">
+            🗓️ Saldo van deze week —{" "}
+            {daysUntilMonday() === 0
+              ? "begint vandaag opnieuw"
+              : daysUntilMonday() === 1
+              ? "nog 1 dag, dan begint het maandag opnieuw"
+              : `nog ${daysUntilMonday()} dagen tot maandag`}
+          </p>
         </div>
       </section>
 
@@ -734,9 +778,10 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
             </div>
 
             <p className="score-note">
-              💡 Het saldo is je spaarpot: die blijft van dag tot dag staan zodat je kan sparen voor
-              beloningen. Elke ochtend beginnen alleen de missies opnieuw — « vandaag verdiend » start
-              dan weer op 0.
+              💡 Het saldo is je spaarpot: die blijft de hele week staan zodat je kan sparen voor
+              beloningen. Elke ochtend beginnen de missies opnieuw (« vandaag verdiend » start weer op 0),
+              en elke <strong>maandag</strong> begint ook het saldo opnieuw op 0 — spaar dus niet te lang,
+              maar geef je punten uit tijdens de week!
             </p>
           </div>
         </details>
@@ -1184,10 +1229,12 @@ function ParentPanel(props) {
       </section>
 
       <p className="parent-note">
-        ℹ️ De missies worden elke dag opnieuw ingesteld; de punten blijven behouden. De missies met
-        « school » verschijnen alleen van maandag tot vrijdag, die met « buiten school » alleen in het
-        weekend en de vakantie. Missies « meerdere keren per dag » kunnen vaker afgevinkt worden. De
-        gegevens worden gedeeld tussen alle toestellen die de gepubliceerde link gebruiken — houd hem privé.
+        ℹ️ De missies worden elke dag opnieuw ingesteld; het saldo blijft de hele week staan en wordt
+        <strong> elke maandag automatisch op 0 gezet</strong> (zo sparen de kinderen geen uren tv/spelen op).
+        Het levenstotaal 🏆 blijft behouden. De missies met « school » verschijnen alleen van maandag tot
+        vrijdag, die met « buiten school » alleen in het weekend en de vakantie. Missies « meerdere keren
+        per dag » kunnen vaker afgevinkt worden. De gegevens worden gedeeld tussen alle toestellen die de
+        gepubliceerde link gebruiken — houd hem privé.
       </p>
     </div>
   );
@@ -1291,6 +1338,7 @@ const CSS = `
 .rocket-text { font-size: 16px; color: #4A4766; }
 .rocket-text.ready { color: #1FA97C; font-weight: 600; }
 .total-line { font-size: 13px; color: #8A87A6; }
+.week-line { font-size: 13px; color: #6C63FF; font-weight: 600; }
 
 /* Secties */
 .section-title {
