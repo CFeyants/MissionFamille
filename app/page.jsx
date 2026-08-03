@@ -13,7 +13,7 @@ const AVATARS = ["🦊", "🐯", "🐰", "🐼", "🦁", "🐨", "🐸", "🦄",
 // Versie van de inhoud (missies/beloningen/minpunten). Bij een verhoging
 // worden de standaardlijsten van Romane & Théo opnieuw opgebouwd terwijl de
 // verdiende punten behouden blijven.
-const CONTENT_VERSION = 3;
+const CONTENT_VERSION = 4;
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -108,7 +108,7 @@ const defaultData = () => ({
         { id: uid(), emoji: "🧸", label: "Mijn kamer opruimen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 5, schoolOnly: false, homeOnly: false, repeatable: true, maxPerDay: 2 },
         { id: uid(), emoji: "🧻", label: "Handdoeken aan het handdoekenrek hangen", points: 5, schoolOnly: false, homeOnly: false, repeatable: false },
-        { id: uid(), emoji: "🌙", label: "Zonder mopperen naar bed gaan", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "🌙", label: "Alleen en zonder mopperen gaan slapen", points: 20, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🧹", label: "Meehelpen met een huishoudelijke taak", points: 5, schoolOnly: false, homeOnly: false, repeatable: true },
         { id: uid(), emoji: "🧩", label: "Speelgoed opruimen na het spelen", points: 10, schoolOnly: false, homeOnly: false, repeatable: true },
         { id: uid(), emoji: "🥪", label: "Boterhammen klaarmaken voor school of stage", points: 20, schoolOnly: false, homeOnly: false, repeatable: false },
@@ -117,8 +117,9 @@ const defaultData = () => ({
       rewards: [
         { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 30 },
         { id: uid(), emoji: "📖", label: "10 min extra voorlezen in bed", cost: 40 },
-        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 50 },
+        { id: uid(), emoji: "🍽️", label: "Het avondeten kiezen", cost: 50 },
         { id: uid(), emoji: "📺", label: "20 min extra tv", cost: 70 },
+        { id: uid(), emoji: "🎁", label: "Cadeau van 20 €", cost: 200 },
       ],
       penalties: [
         { id: uid(), emoji: "😤", label: "Gemopperd", points: 5 },
@@ -140,6 +141,7 @@ const defaultData = () => ({
       missions: [
         { id: uid(), emoji: "🏃", label: "Me meteen klaarmaken om te vertrekken (schoenen en jas aan)", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "💛", label: "Lief zijn voor Romane", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
+        { id: uid(), emoji: "✋", label: "Als papa of mama nee zegt, luisteren en stoppen", points: 15, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "✏️", label: "Niet mopperen om mijn huiswerk te maken", points: 10, schoolOnly: true, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "👕", label: "Mijn kleren opruimen", points: 10, schoolOnly: false, homeOnly: false, repeatable: false },
         { id: uid(), emoji: "🪥", label: "3 minuten mijn tanden poetsen", points: 5, schoolOnly: false, homeOnly: false, repeatable: true, maxPerDay: 2 },
@@ -152,9 +154,10 @@ const defaultData = () => ({
       ],
       rewards: [
         { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 30 },
-        { id: uid(), emoji: "🎬", label: "De film van de avond kiezen", cost: 50 },
+        { id: uid(), emoji: "🍽️", label: "Het avondeten kiezen", cost: 50 },
         { id: uid(), emoji: "🎮", label: "15 min extra spelen", cost: 60 },
         { id: uid(), emoji: "🌙", label: "15 min later naar bed dan Romane", cost: 90 },
+        { id: uid(), emoji: "🎁", label: "Cadeau van 20 €", cost: 200 },
       ],
       penalties: [
         { id: uid(), emoji: "🙅", label: "Niet lief voor Romane", points: 10 },
