@@ -331,6 +331,13 @@ export default function MissiesMetHetGezin() {
       if (delta > 0) c.totalPoints += delta;
     });
 
+  // Zet het saldo (spaarpot) terug op 0. Optioneel ook het levenstotaal.
+  const resetPoints = (childId, alsoTotal) =>
+    updateChild(childId, (c) => {
+      c.points = 0;
+      if (alsoTotal) c.totalPoints = 0;
+    });
+
   /* Minpunten : mogen nu door de ouders én door de kinderen zelf toegepast
      worden ; ze halen punten van het saldo af */
   const applyPenalty = (childId, penalty) =>
@@ -505,6 +512,7 @@ export default function MissiesMetHetGezin() {
           data={data}
           activeChild={activeChild}
           adjustPoints={adjustPoints}
+          resetPoints={resetPoints}
           addMission={addMission}
           removeMission={removeMission}
           addReward={addReward}
@@ -624,6 +632,21 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
     : null;
   const progress = target ? Math.min(1, child.points / target.cost) : 0;
 
+  // Detail van de score van vandaag
+  const earnedEntries = child.missions
+    .map((m) => {
+      const raw = child.completedToday[m.id];
+      if (!raw) return null;
+      const times = m.repeatable ? Number(raw) || 0 : 1;
+      if (times <= 0) return null;
+      return { id: m.id, emoji: m.emoji, label: m.label, times, pts: times * m.points };
+    })
+    .filter(Boolean);
+  const earnedToday = earnedEntries.reduce((s, e) => s + e.pts, 0);
+  const lostToday = (child.penaltiesToday || []).reduce((s, p) => s + p.points, 0);
+  const netToday = earnedToday - lostToday;
+  const fmtNet = `${netToday >= 0 ? "+" : "−"}${Math.abs(netToday)}`;
+
   return (
     <div className="child-view">
       {/* Voortgangsraket */}
@@ -654,6 +677,69 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
           )}
           <p className="total-line">Totaal verdiend sinds het begin: 🏆 {child.totalPoints}</p>
         </div>
+      </section>
+
+      {/* Detail van de score */}
+      <section>
+        <details className="card score-card">
+          <summary className="score-summary">
+            <span>📊 Score in detail</span>
+            <span className={"score-summary-net" + (netToday < 0 ? " neg" : "")}>{fmtNet} ⭐ vandaag</span>
+          </summary>
+          <div className="score-body">
+            <div className="score-line score-balance">
+              <span>Huidig saldo (spaarpot)</span>
+              <span>⭐ {child.points}</span>
+            </div>
+
+            <div className="score-line">
+              <span>Vandaag verdiend</span>
+              <span className="score-plus">+{earnedToday} ⭐</span>
+            </div>
+            {earnedEntries.length > 0 ? (
+              <ul className="score-sub">
+                {earnedEntries.map((e) => (
+                  <li key={e.id}>
+                    <span>{e.emoji} {e.label}{e.times > 1 ? ` ×${e.times}` : ""}</span>
+                    <span className="score-plus">+{e.pts} ⭐</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="score-empty">Nog niets afgevinkt vandaag.</p>
+            )}
+
+            <div className="score-line">
+              <span>Vandaag afgetrokken</span>
+              <span className="score-minus">−{lostToday} ⭐</span>
+            </div>
+            {child.penaltiesToday && child.penaltiesToday.length > 0 && (
+              <ul className="score-sub">
+                {child.penaltiesToday.map((p) => (
+                  <li key={p.id}>
+                    <span>{p.emoji} {p.label}</span>
+                    <span className="score-minus">−{p.points} ⭐</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="score-line score-net">
+              <span>Netto vandaag</span>
+              <span className={netToday < 0 ? "score-minus" : "score-plus"}>{fmtNet} ⭐</span>
+            </div>
+            <div className="score-line">
+              <span>Totaal verdiend sinds het begin</span>
+              <span>🏆 {child.totalPoints}</span>
+            </div>
+
+            <p className="score-note">
+              💡 Het saldo is je spaarpot: die blijft van dag tot dag staan zodat je kan sparen voor
+              beloningen. Elke ochtend beginnen alleen de missies opnieuw — « vandaag verdiend » start
+              dan weer op 0.
+            </p>
+          </div>
+        </details>
       </section>
 
       {/* Missies van vandaag */}
@@ -817,7 +903,7 @@ function ChildView({ child, toggleMission, incMission, decMission, redeemReward,
    ============================================================ */
 function ParentPanel(props) {
   const {
-    data, activeChild, adjustPoints, addMission, removeMission, addReward, removeReward,
+    data, activeChild, adjustPoints, resetPoints, addMission, removeMission, addReward, removeReward,
     applyPenalty, undoPenalty, addPenalty, removePenalty,
     addChild, removeChild, newMission, setNewMission, newReward, setNewReward,
     newPenalty, setNewPenalty, newChild, setNewChild,
@@ -848,6 +934,26 @@ function ParentPanel(props) {
                   {d > 0 ? `+${d}` : d}
                 </button>
               ))}
+            </div>
+            <div className="row reset-row">
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`Saldo van ${activeChild.name} op 0 zetten? Het totaal sinds het begin blijft behouden.`))
+                    resetPoints(activeChild.id, false);
+                }}
+              >
+                Saldo op 0
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`Alles van ${activeChild.name} op 0 zetten (saldo én totaal)? Dit kan niet ongedaan gemaakt worden.`))
+                    resetPoints(activeChild.id, true);
+                }}
+              >
+                Alles op 0 (saldo + totaal)
+              </button>
             </div>
           </section>
 
@@ -1239,6 +1345,33 @@ const CSS = `
 .repeat-btn:active { transform: scale(.9); }
 .repeat-btn:disabled { background: #E8E6F5; color: #B7B4CC; cursor: not-allowed; }
 .repeat-count { font-size: 20px; font-weight: 700; min-width: 40px; color: #2B2B4A; }
+
+/* Detail van de score */
+.score-card { margin-bottom: 24px; padding: 0; overflow: hidden; }
+.score-summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 16px 18px; font-size: 16px; font-weight: 700; color: #2B2B4A;
+}
+.score-summary::-webkit-details-marker { display: none; }
+.score-summary::after { content: "▸"; color: #6C63FF; font-size: 15px; transition: transform .2s ease; }
+.score-card[open] .score-summary::after { transform: rotate(90deg); }
+.score-summary-net { font-size: 15px; font-weight: 700; color: #1FA97C; margin-left: auto; }
+.score-summary-net.neg { color: #C0392B; }
+.score-card[open] .score-summary::after { margin-left: 8px; }
+.score-body { padding: 0 18px 16px; display: grid; gap: 8px; }
+.score-line {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  font-size: 15px; color: #4A4766; padding: 4px 0;
+}
+.score-line.score-balance { font-size: 18px; font-weight: 700; color: #2B2B4A; border-bottom: 2px solid #EEE9FF; padding-bottom: 10px; }
+.score-line.score-net { border-top: 1px dashed #E4E1F2; padding-top: 10px; font-weight: 700; color: #2B2B4A; }
+.score-plus { color: #1FA97C; font-weight: 700; }
+.score-minus { color: #C0392B; font-weight: 700; }
+.score-sub { list-style: none; display: grid; gap: 4px; margin: 0 0 4px 8px; }
+.score-sub li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: #7A7794; }
+.score-empty { font-size: 13px; color: #8A87A6; margin-left: 8px; }
+.score-note { font-size: 12.5px; color: #8A87A6; line-height: 1.5; margin-top: 6px; }
+.reset-row { margin-top: 10px; }
 
 /* Winkel */
 .reward-list { display: grid; gap: 10px; margin-bottom: 24px; }
