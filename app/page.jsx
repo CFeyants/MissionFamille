@@ -45,6 +45,20 @@ const daysUntilMonday = () => {
   return day === 1 ? 0 : (8 - day) % 7;
 };
 
+// Maandag (YYYY-MM-DD) van de week waarin een gegeven datum valt
+const weekStartOf = (iso) => {
+  try {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    const diff = (dt.getDay() + 6) % 7;
+    dt.setDate(dt.getDate() - diff);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+  } catch {
+    return iso;
+  }
+};
+
 const nlDate = (iso) => {
   try {
     const [, m, d] = iso.split("-");
@@ -113,6 +127,7 @@ const defaultData = () => ({
         { id: uid(), emoji: "🧩", label: "Speelgoed niet opgeruimd", points: 5 },
       ],
       penaltiesToday: [],
+      dayLog: [],
       history: [],
     },
     {
@@ -148,6 +163,7 @@ const defaultData = () => ({
         { id: uid(), emoji: "🧩", label: "Speelgoed niet opgeruimd", points: 5 },
       ],
       penaltiesToday: [],
+      dayLog: [],
       history: [],
     },
   ],
@@ -157,11 +173,27 @@ const defaultData = () => ({
 const applyDailyReset = (data) => {
   const today = getToday();
   if (data.lastReset === today) return { data, changed: false };
+  const endedDay = data.lastReset; // dag die net is afgelopen
   return {
     data: {
       ...data,
       lastReset: today,
-      children: data.children.map((c) => ({ ...c, completedToday: {}, penaltiesToday: [] })),
+      children: data.children.map((c) => {
+        // Balans van de afgelopen dag berekenen en in de geschiedenis bewaren
+        const earned = c.missions.reduce((s, m) => {
+          const raw = c.completedToday ? c.completedToday[m.id] : 0;
+          if (!raw) return s;
+          const times = m.repeatable ? Number(raw) || 0 : 1;
+          return s + times * m.points;
+        }, 0);
+        const lost = (c.penaltiesToday || []).reduce((s, p) => s + p.points, 0);
+        const prevLog = Array.isArray(c.dayLog) ? c.dayLog : [];
+        const dayLog =
+          earned || lost
+            ? [{ date: endedDay, earned, lost, net: earned - lost }, ...prevLog].slice(0, 90)
+            : prevLog;
+        return { ...c, completedToday: {}, penaltiesToday: [], dayLog };
+      }),
     },
     changed: true,
   };
@@ -191,6 +223,7 @@ const normalizeData = (data) => {
   data.children.forEach((c) => {
     if (!Array.isArray(c.penalties)) c.penalties = [];
     if (!Array.isArray(c.penaltiesToday)) c.penaltiesToday = [];
+    if (!Array.isArray(c.dayLog)) c.dayLog = [];
     if (!c.completedToday || typeof c.completedToday !== "object") c.completedToday = {};
     c.missions.forEach((m) => {
       if (typeof m.schoolOnly !== "boolean") m.schoolOnly = false;
@@ -463,6 +496,7 @@ export default function MissiesMetHetGezin() {
         rewards: [],
         penalties: [],
         penaltiesToday: [],
+        dayLog: [],
         history: [],
       });
       return d;
@@ -962,6 +996,22 @@ function ParentPanel(props) {
     return t.length ? " · " + t.join(" · ") : "";
   };
 
+  // Puntengeschiedenis per week groeperen (nieuwste week eerst)
+  const groupByWeek = (log) => {
+    const map = new Map();
+    (log || []).forEach((e) => {
+      const wk = weekStartOf(e.date);
+      if (!map.has(wk)) map.set(wk, { week: wk, earned: 0, lost: 0, net: 0, days: [] });
+      const g = map.get(wk);
+      g.earned += e.earned;
+      g.lost += e.lost;
+      g.net += e.net;
+      g.days.push(e);
+    });
+    return [...map.values()].sort((a, b) => (a.week < b.week ? 1 : -1));
+  };
+  const weeks = activeChild ? groupByWeek(activeChild.dayLog) : [];
+
   return (
     <div className="parent-panel">
       <div className="card parent-banner">
@@ -1190,6 +1240,47 @@ function ParentPanel(props) {
                 </details>
               )}
             </div>
+          </section>
+
+          {/* Puntengeschiedenis */}
+          <section className="card">
+            <h3>Puntengeschiedenis van {activeChild.name}</h3>
+            {weeks.length === 0 ? (
+              <p className="penalty-hint">
+                Nog geen geschiedenis — die verschijnt zodra een dag voorbij is.
+              </p>
+            ) : (
+              <div className="log-weeks">
+                {weeks.map((w, i) => (
+                  <details key={w.week} className="log-week" open={i === 0}>
+                    <summary className="log-summary">
+                      <span>Week van {nlDate(w.week)}</span>
+                      <span className={"log-net" + (w.net < 0 ? " neg" : "")}>
+                        {w.net >= 0 ? "+" : "−"}{Math.abs(w.net)} ⭐
+                      </span>
+                    </summary>
+                    <div className="log-days">
+                      {w.days.map((e) => (
+                        <div key={e.date} className="log-row">
+                          <span className="log-date">{nlDate(e.date)}</span>
+                          <span className="log-vals">
+                            <span className="score-plus">+{e.earned}</span>
+                            {e.lost > 0 && <span className="score-minus">−{e.lost}</span>}
+                            <strong className="log-daynet">
+                              = {e.net >= 0 ? "+" : "−"}{Math.abs(e.net)} ⭐
+                            </strong>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+            <p className="penalty-hint">
+              Overzicht van de punten uit missies en minpunten, dag per dag. Het saldo begint elke
+              maandag opnieuw, maar deze geschiedenis blijft bewaard.
+            </p>
           </section>
         </>
       )}
@@ -1529,6 +1620,24 @@ const CSS = `
 .penalty-applied h4 { font-size: 14px; color: #4A4766; margin-bottom: 4px; }
 .penalty-manage summary { cursor: pointer; font-size: 14px; color: #6C63FF; font-weight: 600; padding: 4px 0; }
 .penalty-card .penalty-grid { margin-bottom: 8px; }
+
+/* Puntengeschiedenis (oudermodus) */
+.log-weeks { display: grid; gap: 8px; margin-bottom: 10px; }
+.log-week { border: 1px solid #E4E1F2; border-radius: 14px; padding: 4px 12px; }
+.log-summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 8px 2px; font-size: 15px; font-weight: 600; color: #2B2B4A;
+}
+.log-summary::-webkit-details-marker { display: none; }
+.log-summary::before { content: "▸"; color: #6C63FF; font-size: 13px; margin-right: 4px; transition: transform .2s ease; }
+.log-week[open] .log-summary::before { transform: rotate(90deg); }
+.log-net { margin-left: auto; font-weight: 700; color: #1FA97C; }
+.log-net.neg { color: #C0392B; }
+.log-days { display: grid; gap: 4px; padding: 4px 2px 8px; }
+.log-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+.log-date { color: #7A7794; }
+.log-vals { display: flex; gap: 8px; align-items: baseline; }
+.log-daynet { color: #2B2B4A; }
 
 /* Oeps-kaart (kindweergave) */
 .oops-card { display: grid; gap: 8px; border: 2px solid #FFD9D9; margin-bottom: 24px; }
