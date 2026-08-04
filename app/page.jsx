@@ -13,7 +13,7 @@ const AVATARS = ["🦊", "🐯", "🐰", "🐼", "🦁", "🐨", "🐸", "🦄",
 // Versie van de inhoud (missies/beloningen/minpunten). Bij een verhoging
 // worden de standaardlijsten van Romane & Théo opnieuw opgebouwd terwijl de
 // verdiende punten behouden blijven.
-const CONTENT_VERSION = 4;
+const CONTENT_VERSION = 5;
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -155,7 +155,8 @@ const defaultData = () => ({
       rewards: [
         { id: uid(), emoji: "🍨", label: "Een dessert kiezen", cost: 30 },
         { id: uid(), emoji: "🍽️", label: "Het avondeten kiezen", cost: 50 },
-        { id: uid(), emoji: "🎮", label: "15 min extra spelen", cost: 60 },
+        { id: uid(), emoji: "📖", label: "10 min extra voorlezen in bed", cost: 40 },
+        { id: uid(), emoji: "🎮", label: "20 min extra spelen", cost: 70 },
         { id: uid(), emoji: "🌙", label: "15 min later naar bed dan Romane", cost: 90 },
         { id: uid(), emoji: "🎁", label: "Cadeau van 20 €", cost: 200 },
       ],
